@@ -1,10 +1,10 @@
 " breakpts.vim
 " Author: Hari Krishna <hari_vim at yahoo dot com>
-" Last Change: 05-Nov-2003 @ 19:19
+" Last Change: 06-May-2004 @ 20:08
 " Created: 09-Jan-2003
-" Requires: Vim-6.2, genutils.vim(1.10), multvals.vim(3.4)
-" Depends On: foldutil.vim (1.4)
-" Version: 3.0.5
+" Requires: Vim-6.3, genutils.vim(1.13), multvals.vim(3.6)
+" Depends On: foldutil.vim(1.4), cmdalias.vim(1.0)
+" Version: 3.1.6
 " Acknowledgements:
 "   - Thanks a lot to David Fishburn {fishburn at sybase dot com} for
 "     providing a lot of feedback and ideas, and helping me with finding
@@ -26,35 +26,47 @@
 "     (or by pressing the hot key, if you have chosen one). You can use
 "     :BreakPts (or the hot key) again to close the window. The :BreakPts
 "     command also allows an option to be passed to specify the initial view
-"     (+f for functions, +s for scripts, +b for breakpoints).
+"     (+f for functions, +s for scripts, +b for breakpoints). As a
+"     convenience, you can also convert any number of existing buffers to
+"     additional BreakPts buffers by executing the :BreakPtsSetupBuf command.
+"     This allows you to display as many windows as you want each with
+"     different lists/listings.
+"
+"     E.g., you can convert an arbitrary buffer to display the :breaklist (by
+"     executing the :BPPoints command) and use it to enable/disable
+"     breakpoints.
 "   - The window is normally first opened with the list of all the functions
 "     that are loaded into Vim. But you can toggle between the list of
 "     functions, scripts and breakpoints, by using the :BPScripts,
-"     :BPFunctions and :BPBrklist commands respectively, while in the BreakPts
+"     :BPFunctions and :BPPoints commands respectively, while in the BreakPts
 "     window.
 "   - Search for the function/script that you are interested in and press <CR>
 "     or use :BPSelect command to get the listing. Alternatively you can use
 "     :BPListFunc or :BPListScript command to list a function or script
 "     directly. This is also the only way you can set a breakpoint in an
 "     unloaded plugin (such as a ftplugin that is yet to be loaded). In the
-"     script window, you can also use :BPOpen (or o) to open the script for
-"     editing.
+"     script window, you can also use :BPOpen (or o) to open a script script
+"     that is already loaded for editing. BPListScript command can take an
+"     absoluate path or a relative path that is valid from the current
+"     directory or any directory in the 'runtimepath' as an argument.
 "
 "     TIP: You can use Vim's function or file name completion mechanism (if
 "     enabled) with these commands. For script local functions, you can have
 "     vim fill in the <SNR> prefix (instead of manually typing it in), by
-"     prefixing the function name an asterisk before attempting to complete.
+"     prefixing the function name with an asterisk, before attempting to
+"     complete.
 "   - You can navigate the history by using <BS> and <Tab> (or :BPBack and
 "     :BPForward) commands, just like in an HTML browser.
 "   - To toggle a breakpoint at any line, press <F9> (or :BPToggle) command.
 "     The plugin uses Vim's |:sign| feature to visually indicate the existence
 "     of a breakpoint. You can also use :BPClearAll command to clear all the
-"     breakpoints.
+"     breakpoints when you are in the BreakPts window (or :BreakPtsClearAll
+"     in other windows).
 "   - You can save the breakpoints into a global variable using the :BPSave
-"     command while in the BreakPts window. The command takes in the name of a
-"     global variable where the commands to recreate the breakpoints will be
-"     saved. You can later reload these breakpoints by simply executing the
-"     variable:
+"     command while in the BreakPts window (or using the :BreakPtsSave in
+"     other windows). The command takes in the name of a global variable where
+"     the commands to recreate the breakpoints will be saved. You can later
+"     reload these breakpoints by simply executing the variable:
 "
 "         :BPSave BL
 "         :BPClearAll
@@ -63,8 +75,8 @@
 "         :exec BL
 "
 "     You can also use this technique to save and restore breakpoints across
-"     sessions. For this, just make sure that the '!' option in 'viminfo' is
-"     set:
+"     sessions. For this to work, just make sure that the '!' option in
+"     'viminfo' is set:
 "
 "         :set viminfo^=!
 "
@@ -81,18 +93,23 @@
 "     installed, but you can also set g:brkptsCreateFolds to 0 to explicitly
 "     disable it.
 "   - On the scripts view, you can use :BPReload (or O) to reload a script
-"     after unletting the corresponding g:loaded_<plugin name> variable. This
-"     is intended to be used with the regular plugins, not the others such as
-"     ftplugin, indent, syntax, colors or compiler plugins as these plugins
-"     will automatically be reloaded by Vim at appropriate times.
+"     locally or remotely. This basically determines the corresponding
+"     g:loaded_<plugin name> variable by following some simple rules and
+"     sources this script after unletting the variable. This is intended to be
+"     used with the regular plugins, not the others such as ftplugin, indent,
+"     syntax, colors or compiler plugins as these plugins will automatically
+"     be reloaded by Vim at appropriate times.
 "
 "     TIP: You can use this command to reload a new version of a plugin
 "     without restarting your vim, but make sure the plugin supports such an
-"     operation. Many plugins may not be designed to be just reloaded this way
-"     as the script local variables could get reset causing it to misbehave.
+"     operation (all my other plugins do, as this is what I do during the
+"     development process). Many plugins may not be designed to be just
+"     reloaded this way as the script local variables could get reset causing
+"     it to misbehave.
 "   - The contents of BreakPts window is cached, so to see the latest listing
 "     at any time, refresh the window by pressing 'R' (or :BPRefresh) command.
 "     You also need to refresh to see the breakpoints added/removed manually.
+"     CAUTION: This commands results in a loss of forward history.
 "   - To connect to a remote Vim using the |clientserver| functionality, open
 "     the BreakPts window and use the :BPRemoteServ command with the Vim
 "     server name as the argument (with no arguments the same command prints
@@ -108,23 +125,30 @@
 "     in the remote session as follows:
 "
 "           Remote command    Local command   Local map
-"           >next             :BPDNext        <F10>
+"           >next             :BPDNext        <F12>
 "           >step             :BPDStep        <F11> 
 "           >cont             :BPDCont        <F5>
 "           >quit             :BPDQuit        <S-F5>
 "           >finish           :BPDFinish      <S-F11>
 "
+"   - The plugin defines a global command called :Where which you can use
+"     during the debugging to see the context of the current line.
+"   - Creates the following commands with useful completions, and alias them
+"     to the corresponding built-in commands if cmdalias.vim is loaded.
+"     - :Runtime (for |:runtime|) that allows you to do partial file
+"       completions from your 'runtimepath'.
+"     - :Debug (for |:debug|) that allows you to do command-completions.
+"     - :Breakadd (for |:breakadd|) that allows you to complete on the
+"       function name or file path (from 'runtimepath').
+"     - :Breakdel (for |:breakdel|) that allows you to complete on the
+"       existing breakpoints (obtained from :breaklist).
 "   - The plugin also provides two global functions BPBreak() and BPBreakIf()
-"     which can be used to insert breakpoints dynamically. The BPBreak()
+"     which can be used to insert, and two more global functions BPDeBreak()
+"     and BPDeBreakIf() for clearing breakpoints dynamically. The BPBreak()
 "     function works similar to the VB break command. It can also be used to
 "     insert breakpoints from the debug prompt. The BPBreakIf() is just a
 "     convenience function to conditionally break at a specified location. See
-"     the function headers for more information. You need to patch 6.2 before
-"     this feature can work. You can download the patch from:
-"
-"       http://mywebpage.netscape.com/haridara/vim/breakpoint.patch.txt
-"
-"     The patch also fixes a problem with the debug mode >cont command.
+"     the function headers for more information.
 "
 " Installation:
 "   - Place the plugin in a plugin diretory under runtimepath and configure
@@ -154,7 +178,7 @@
 "     PATH)/path of an external command. This will make the plugin use
 "     external sort (which in general is much faster) instead of the built-in
 "     sort.
-"   - Set g:brkptsDefStartMode to 'script', 'function' or 'breaklist' to start
+"   - Set g:brkptsDefStartMode to 'scripts', 'functions' or 'breakpts' to start
 "     the browser in that mode.
 "   - Set g:brkptsModFuncHeader to a true value, if you want to change
 "     "function" to "function!" while listing functions. This will simplify you
@@ -162,16 +186,31 @@
 "     (kind of incremental update).
 "   - Set the '!' flag in viminfo if you want to save the breaklist across
 "     sessions (see usage above).
+"   - The default maps for debug commands are defined based on the MS Visual
+"     Studio, but you can easily configure them.
+"
+"     Here is a table of all the mappings and their default key associations:
+"     
+"       Mapping               Default       Description~
+"       BreakPtsContKey       <F5>          Continue execution (>cont).
+"       BreakPtsQuitKey       <S-F5>        Quit debug mode (>quit).
+"       BreakPtsNextKey       <F12>         Exeute next command (>next).
+"       BreakPtsStepKey       <F11>         Step into next command (>step).
+"       BreakPtsFinishKey     <S-F11>       Finish executing current
+"                                           function/script (>finish).
+"       BreakPtsClearAllKey   <C-S-F9>      Clear all breakpoints.
+"
+"     E.g., to change the mapping for the BreakPtsContKey to <F8>, place the
+"     following in your vimrc:
+"
+"       nmap <script> <silent> <Plug>BreakPtsContKey <F8>
 " TODO:
 "   Features: 
-"     - Implement BPDRunToCursor. Create a temporary checkpoint and clear it
+"     - Implement BPDRunToCursor. Create a temporary breakpoint and clear it
 "       when hit.
 "     - It should be possible to run ctags to get all the local variables in the
 "       current function and automatically show their values. We should also
 "       be able to show the argument values automatically.
-"     - It is possible for the debuggee scripts to provide a standard
-"       interface (see perforce plugin for example) for the plugin to poke
-"       into and obtain the script local values.
 "     - How about a :BPDEvaluate command that takes in an expression and
 "       evaluates it in the remote vim and shows the result (using
 "       remote_expr() to be safe)?
@@ -179,48 +218,95 @@
 "       everytime the context is refreshed (using the :BPEvaluation infra.).
 "     - How about opening an editable function listing window extracted from the
 "       remote vim, and allow users to redefine it after modifying it?
-"     - Need configurable shortcut keys. The current keys are modelled after
-"       MS Visual Studio, but other IDEs use significantly different keys.
-"     - I should be able to make better use of the stack produced by the
-"       context. Maintain a local stack of current line numbers for them. But
-"       I still will not be able to go up and down the stack, so may be not
-"       that important.
-"     - We need syntax rules for the BPScripts screen.
+"     - Can I make better use of the stack produced by the context? I can
+"       maintain a local stack of current line numbers for them. But still Vim
+"       will not be able to go up and down the stack, so may be not that
+"       important.
 "     - A menu will be useful for those who are used to menus.
 "     - We need a debug console to show the output of various debug commands.
+"     - A statusbar (with current function/script name etc.) will be useful.
+"     - It is possible for the debuggee scripts to provide a standard interface
+"       (see perforce plugin for example) for the plugin to poke into and obtain
+"       the script local values. This allows us to show the local variables at
+"       any time, and without needing to execute them at debug prompt remotely.
 "
+"   - How do I detect if the execution of the command has finished, so that I
+"     can terminate s:WaitForDbgPrompt()?
+"   - If you set a breakpoint during the startup, it doesn't work. Also,
+"     BPBreak seems to misbehave 'file' as 'func' in this case.
+"     exec 'breakadd file 3' expand('<sfile>')
+"     exec BPBreak(1)
+"     call input(expand('<sfile>'))
+"   - BPRemoteServ should have a global equivalent.
+"   - The :BPListFunc should also support SID search.
 "   - How can I generate context without executing a normal command?
 "     Using remote_expr() doesn't seem feasible. The same is applicable to
 "     executing debug mode commands.
-"   - Why is the column position getting reset in the listing window (only),
-"     during the navigation?
-"   - Why am I getting the remote output as this, sometimes:
-"       3  func...pl  line 12
-"       4  func...mpl  line 1
-"   - Comments appear as strings. Need a new syntax rule.
+"
+" Usage Scenarios {{{
+"   - Start the browser using :BreakPts command for the first time with each
+"     of the three options.
+"   - Switch to a each of the three views using :BreakPts by using each of the
+"     three options, make sure the history is gone.
+"   - Try switching the views for all unique combinations as below, make sure
+"     the history is not gone, and there is no duplicate when switching to the
+"     same item (use :BPFunctions, :BPScripts, :BPPoints, :BPListFunc,
+"     :BPListScript commands)
+"     - Functions -> Functions
+"     - Functions -> Breakpoints
+"     - Breakpoints -> Breakpoints
+"     - Breakpoints -> Scripts
+"     - Scripts -> Scripts
+"     - Scripts -> Script
+"     - Script -> Same Script
+"     - Script -> Different Script
+"     - Script -> Function
+"     - Function -> Same Function
+"     - Function -> Different Function
+"     - Fuction -> Functions
+"   - In each of the five views, try doing a refresh, make sure there is no
+"     duplicate in the history and that the cursor position is preserved.
+"   - In the Functions, Function, Scripts and Script views, try selecting an
+"     item.
+"   - In the Breakpoints view, try selecting a func item and a file item. Also
+"     try selecting when there are no breakpoints defined.
+"   - In Functions and Scripts views, try toggling breakpoint, make sure it is
+"     ignored.
+"   - In the Function, Script and Breakpoints views, try toggling
+"     (enable/disable) breakpoint (both func and file type in Breakpoints
+"     view). Navigate to the corresponding list view and make sure that the
+"     breakpoints are marked (try toggling breakpoint in the list view, again).
+"   - In the scripts window, reload a script after making some changes and
+"     make sure it gets reflected.
+" Usage Scenarios }}}
 
 if exists('loaded_breakpts')
   finish
 endif
-if v:version < 602
-  echomsg "You need Vim 6.2 to run this version of breakpts.vim."
+if v:version < 603
+  echomsg 'breakpts: You need at least Vim 6.3'
   finish
 endif
-if !exists("loaded_multvals")
+if !exists('loaded_multvals')
   runtime plugin/multvals.vim
 endif
-if !exists("loaded_multvals") || loaded_multvals < 304
-  echomsg "breakpts: You need to have multvals version 3.4 or higher"
+if !exists('loaded_multvals') || loaded_multvals < 306
+  echomsg 'breakpts: You need a newer version of multvals.vim plugin'
   finish
 endif
-if !exists("loaded_genutils")
+if !exists('loaded_genutils')
   runtime plugin/genutils.vim
 endif
-if !exists("loaded_genutils") || loaded_genutils < 110
-  echomsg "breakpts: You need to have genutils version 1.10 or higher"
+if !exists('loaded_genutils') || loaded_genutils < 113
+  echomsg 'breakpts: You need a newer version of genutils.vim plugin'
   finish
 endif
 let loaded_breakpts = 300
+
+" No error if not found.
+if !exists('loaded_cmdalias')
+  runtime plugin/cmdalias.vim
+endif
 
 " Make sure line-continuations won't cause any problem. This will be restored
 "   at the end
@@ -229,8 +315,26 @@ set cpo&vim
 
 " Initialization {{{
 
-command! -nargs=? BreakPts :call <SID>BrowserMain(0, <f-args>)
+command! -nargs=? BreakPts :call <SID>BrowserMain(<f-args>)
 nnoremap <script> <silent> <Plug>BreakPts :BreakPts<cr>
+command! -nargs=0 BreakPtsSetupBuf :call <SID>BPSetupBuf()
+command! -nargs=1 BreakPtsSave :call <SID>SaveBrkPts(<f-args>)
+command! BreakPtsClearAll :call <SID>ClearAllBrkPts()
+command! Where :exec <SID>GenContext() | echo g:BPCurContext
+command! -bang -nargs=+ -complete=custom,<SID>RuntimeComplete Runtime :runtime<bang> <args>
+command! -nargs=+ -complete=custom,<SID>BreakAddComplete Breakadd :breakadd <args>
+command! -nargs=+ -complete=custom,<SID>BreakDelComplete Breakdel :breakdel <args>
+command! -complete=command -nargs=+ Debug :debug <args>
+if exists('*CmdAlias')
+  call CmdAlias('runtime', 'Runtime')
+  call CmdAlias('breaka', 'Breaka')
+  call CmdAlias('breakad', 'Breakad')
+  call CmdAlias('breakadd', 'Breakadd')
+  call CmdAlias('breakd', 'Breakd')
+  call CmdAlias('breakde', 'Breakde')
+  call CmdAlias('breakdel', 'Breakdel')
+  call CmdAlias('debug', 'Debug')
+endif
 
 if !exists('s:myBufNum')
 let s:myBufNum = -1
@@ -244,13 +348,19 @@ let s:remoteScriptId = ''
 let s:curLineInCntxt = '' " Current line for context.
 endif
 let s:BM_SCRIPT = 'script'
+let s:BM_SCRIPTS = 'scripts'
 let s:BM_FUNCTION = 'function'
-let s:BM_BRKLIST = 'breaklist'
-let s:cmd_script = 'script'
-let s:cmd_function = 'function'
-let s:cmd_breaklist = 'breaklist'
+let s:BM_FUNCTIONS = 'functions'
+let s:BM_BRKPTS = 'breakpts'
+let s:cmd_scripts = 'script'
+let s:cmd_functions = 'function'
+let s:cmd_breakpts = 'breaklist'
+let s:header{s:BM_SCRIPTS} = 'Scripts:'
+let s:header{s:BM_FUNCTIONS} = 'Functions:'
+let s:header{s:BM_BRKPTS} = 'Breakpoints:'
+"let s:header{s:BM_SCRIPT}= "'Script: '.a:curScript.' (Id: '.a:curScriptId.')'"
 "let s:browserMode = s:BM_FUNCTION
-let s:FUNC_NAME = '\%(<SNR>\d\+_\)\?\k\+'
+let s:FUNC_NAME_PAT = '\%(<SNR>\d\+_\)\?\k\+'
 if !exists("g:brkptsSortFunctions")
   let g:brkptsSortFunctions = 0
 endif
@@ -264,7 +374,7 @@ if !exists("g:brkptsFoldContext")
   let g:brkptsFoldContext = 3
 endif
 if !exists("g:brkptsDefStartMode")
-  let g:brkptsDefStartMode = s:BM_FUNCTION
+  let g:brkptsDefStartMode = s:BM_FUNCTIONS
 endif
 if !exists("g:brkptsModFuncHeader")
   let g:brkptsModFuncHeader = 0
@@ -279,15 +389,16 @@ endfunction
 let s:myScriptId = s:MyScriptId()
 delfunction s:MyScriptId
 
-sign define VimBreakPt linehl=BreakPtsBreakLine text=>>
-      " \ texthl=BreakPtsBreakLine
+if has("signs")
+  sign define VimBreakPt linehl=BreakPtsBreakLine text=>>
+        " \ texthl=BreakPtsBreakLine
+endif
 " Initialization }}}
 
 
 " Browser functions {{{
  
-function! s:BrowserMain(force, ...) " {{{
-  let force = a:force
+function! s:BrowserMain(...) " {{{
   if s:myBufNum == -1
     " Temporarily modify isfname to avoid treating the name as a pattern.
     let _isf = &isfname
@@ -299,8 +410,6 @@ function! s:BrowserMain(force, ...) " {{{
       else
         exec "sp \\". g:BreakPts_title
       endif
-    catch /^Vim\%((\a\+)\)\=:E325/ " Swapfile already exists.
-      " Ignore.
     finally
       let &isfname = _isf
     endtry
@@ -316,58 +425,49 @@ function! s:BrowserMain(force, ...) " {{{
   endif
 
   if a:0 > 0
-    let force = 1
+    let browserMode = ''
     if a:1 =~ '^+f\%[unction]$'
-      let b:browserMode = s:BM_FUNCTION
-    elseif a:1 =~ '^+s\%[cript]$'
-      let b:browserMode = s:BM_SCRIPT
-    elseif a:1 =~ '^+b\%[reaklist]$'
-      let b:browserMode = s:BM_BRKLIST
+      let browserMode = s:BM_FUNCTIONS
+    elseif a:1 =~ '^+s\%[cripts]$'
+      let browserMode = s:BM_SCRIPTS
+    elseif a:1 =~ '^+b\%[reakpts]$'
+      let browserMode = s:BM_BRKPTS
     endif
+    call s:Browser(1, browserMode, '', '')
+  else
+    call s:BrowserRefresh(0)
   endif
-  call s:BrowserRefresh(force)
 endfunction " }}}
 
-function! s:BrowserRefresh(force)
-  if !exists('b:browserMode')
-    let b:browserMode = g:brkptsDefStartMode
-  endif
-  call s:Browser(b:browserMode, s:GetCurrentId(), s:GetCurrentName(), a:force)
-endfunction
+" Call this function to convert any buffer to a breakpts buffer.
+function! s:BPSetupBuf() " {{{
+  call OptClearBuffer()
+  call s:SetupBuf(0)
+endfunction " }}}
+
+" Refreshes with the same mode.
+function! s:BrowserRefresh(force) " {{{
+  call s:Browser(a:force, s:GetBrowserMode(), s:GetListingId(),
+        \ s:GetListingName())
+endfunction " }}}
 
 " The commands local to the browser window can directly call this, as the
 "   browser window is gauranteed to be already open (which is where the user
 "   must have executed the command in the first place).
-function! s:Browser(browserMode, id, name, force) " {{{
-  if a:name != ""
-    call s:OpenListingWindow(a:browserMode, 0)
-  endif
+function! s:Browser(force, browserMode, id, name) " {{{
   call s:ClearSigns()
   " First mark the current position so navigation will work.
   normal! mt
   setlocal modifiable
   if a:force || getline(1) == ''
     call OptClearBuffer()
-    if a:name != ''
-      call s:Browser(a:browserMode, '', '', 0)
-      call s:ClearSigns()
-    endif
-  elseif a:name != ''
-    " Make sure the current browser mode is the expected mode.
-    if b:browserMode != a:browserMode
-      " Setting undolevels to -1 here makes it possible to navigate back to
-      "   the list of functions.
-      let _undolevels = &undolevels
-      try
-        set undolevels=-1
-        call s:Browser(a:browserMode, 0, '', 1)
-      finally
-        let &undolevels = _undolevels
-      endtry
-    elseif s:GetCurrentName() == a:name
-      silent! undo
-    endif
-  elseif a:name == '' && s:GetCurrentName() == ''
+
+  " Refreshing the current listing or list view.
+  elseif ((a:browserMode == s:BM_FUNCTION || a:browserMode == s:BM_SCRIPT) &&
+        \ s:GetListingName() == a:name) ||
+        \((a:browserMode == s:BM_FUNCTIONS || a:browserMode == s:BM_SCRIPTS ||
+        \  a:browserMode == s:BM_BRKPTS) &&
+        \ a:browserMode == s:GetBrowserMode())
     call SaveHardPosition('BreakPts')
     silent! undo
   endif
@@ -376,16 +476,16 @@ function! s:Browser(browserMode, id, name, force) " {{{
     call s:List_{a:browserMode}(a:id, a:name)
   else
     let output = s:GetVimCmdOutput(s:cmd_{a:browserMode})
+    let lastLine = line('$')
     silent! $put =output
-    silent! 1,2delete _
+    silent! exec '1,' . (lastLine + 1) . 'delete _'
 
-    if exists('*s:Process_'.a:browserMode.'_output')
+    if exists('*s:Process_{a:browserMode}_output')
       call s:Process_{a:browserMode}_output()
     endif
-
+    call append(0, s:header{a:browserMode})
   endif
   setlocal nomodifiable
-  let b:browserMode = a:browserMode
   call s:MarkBreakPoints(a:name)
   if IsPositionSet('BreakPts')
     call RestoreHardPosition('BreakPts')
@@ -394,7 +494,8 @@ function! s:Browser(browserMode, id, name, force) " {{{
   call s:SetupBuf(a:name == "")
 endfunction " }}}
 
-function! s:Process_function_output() " {{{
+function! s:Process_functions_output() " {{{
+  " Remove function prefix and parenthesis.
   let _search = @/
   try
     let @/ = '(.*)$'
@@ -414,7 +515,8 @@ endfunction " }}}
 
 function! s:List_script(curScriptId, curScript) " {{{
   let lastLine = line('$')
-  silent! call append('$', a:curScript . ' (Id: ' . a:curScriptId . ')')
+  silent! call append('$', 'Script: ' . a:curScript . ' (Id: ' . a:curScriptId
+        \ . ')')
   let v:errmsg = ''
   silent! exec '$read ' . a:curScript
   if v:errmsg != ''
@@ -483,18 +585,60 @@ function! s:FuncNameComparator(func1, func2, direction) " {{{
   return cmp
 endfunction " }}}
 
+function! s:GetBrowserMode() " {{{
+  let headLine = getline(1)
+  if headLine =~ '^\s*function!\= '
+    let mode = s:BM_FUNCTION
+  elseif headLine =~ '^'.s:header{s:BM_FUNCTIONS}.'$'
+    let mode = s:BM_FUNCTIONS
+  elseif headLine =~ '^Script: '
+    let mode = s:BM_SCRIPT
+  elseif headLine =~ '^'.s:header{s:BM_SCRIPTS}.'$'
+    let mode = s:BM_SCRIPTS
+  elseif headLine =~ '^'.s:header{s:BM_BRKPTS}.''
+    let mode = s:BM_BRKPTS
+  else
+    let mode = g:brkptsDefStartMode
+  endif
+  return mode
+endfunction " }}}
+
 " Browser functions }}}
 
 
 " Breakpoint handling {{{
 
 function! s:DoAction() " {{{
-  if b:browserMode == s:BM_FUNCTION
+  if line('.') == 1 " Ignore the header line.
+    return
+  endif
+  let browserMode = s:GetBrowserMode()
+  if browserMode == s:BM_BRKPTS
+    " FIXME: Won't work if not English.
+    if getline('.') =~ 'No breakpoints defined'
+      return
+    endif
+    exec s:GetBrklistLineParser(getline('.'), 'name', 'mode')
+    if mode ==# 'func'
+      let mode = s:BM_FUNCTION
+    elseif mode ==# 'file'
+      let mode = s:BM_SCRIPT
+    endif
+    call s:OpenListing(0, mode, 0, name)
+    call search('^'.lnum.'\>', 'w')
+  elseif browserMode == s:BM_SCRIPTS
+    let curScript = s:GetScript()
+    let curScriptId = s:GetScriptId()
+    if curScript != '' && curScriptId != ''
+      call s:OpenListing(0, s:BM_SCRIPT, curScriptId, curScript)
+    endif
+  elseif browserMode == s:BM_FUNCTION || browserMode == s:BM_FUNCTIONS
+        \ || browserMode == s:BM_SCRIPT
     let curFunc = s:GetFuncName()
     if curFunc != ''
       let scrPrefix = matchstr(curFunc, '^\%(s:\|<SID>\)')
       if scrPrefix != ''
-        let curSID = s:GetCurrentId()
+        let curSID = s:GetListingId()
         let curFunc = strpart(curFunc, strlen(scrPrefix))
         if curSID == ""
           let curSID = s:SearchForSID(curFunc)
@@ -506,29 +650,32 @@ function! s:DoAction() " {{{
         endif
         let curFunc = '<SNR>' . curSID . '_' . curFunc
       endif
-      call s:Browser(s:BM_FUNCTION, '', curFunc, 0)
+      call s:OpenListing(0, s:BM_FUNCTION, '', curFunc)
     endif
-  elseif b:browserMode == s:BM_SCRIPT
-    let curScript = s:GetScript()
-    let curScriptId = s:GetScriptId()
-    if curScript != '' && curScriptId != ''
-      call s:Browser(s:BM_SCRIPT, curScriptId, curScript, 0)
-    endif
-  elseif b:browserMode == s:BM_BRKLIST
-    " FIXME: Won't work if not English.
-    if getline('.') =~ 'No breakpoints defined'
-      return
-    endif
-    exec s:GetBrklistLineParser(getline('.'))
-    if mode == 'func'
-      let mode = s:BM_FUNCTION
-    elseif mode == 'file'
-      let mode = s:BM_SCRIPT
-    endif
-    call s:OpenListingWindow(mode, 1)
-    call s:Browser(mode, 0, name, 0)
-    call search('^'.lnum.'\>', 'w')
   endif
+endfunction " }}}
+
+function! s:OpenListing(force, mode, id, name) " {{{
+  call s:OpenListingWindow(0)
+  call s:Browser(a:force, a:mode, a:id, a:name)
+endfunction " }}}
+
+" Accepts a partial path valid under 'rtp'
+function! s:OpenScript(rtPath) " {{{
+  let path = a:rtPath
+  if ! filereadable(path) && fnamemodify(path, ':p') != path
+    call MvIterCreate(&rtp, '\\\@<!\(\\\\\)*\zs,', 'BPRTP', ',')
+    while MvIterHasNext('BPRTP')
+      let dir = MvIterNext('BPRTP')
+      if filereadable(dir.'/'.a:rtPath)
+        let path = dir.'/'.a:rtPath
+      endif
+    endwhile
+    call MvIterDestroy('BPRTP')
+  else
+    let path = fnamemodify(path, ':p')
+  endif
+  call s:OpenListing(0, s:BM_SCRIPT, 0, path )
 endfunction " }}}
 
 " Pattern to extract the breakpt number out of the :breaklist.
@@ -539,19 +686,16 @@ function! s:MarkBreakPoints(name)
   let b:brkPtLines = ''
   let brkPts = s:GetVimCmdOutput('breaklist')
   let pat = ''
-  if b:browserMode == s:BM_FUNCTION
-    if a:name == ''
-      let pat = '\d\+\s\+func \zs\%(<SNR>\d\+_\)\?\k\+\ze\s\+line \d\+'
-    else
-      let pat = '\d\+\s\+func ' . a:name . '\s\+line \zs\d\+'
-    endif
-  elseif b:browserMode == s:BM_SCRIPT
-    if a:name == ''
-      let pat = '\d\+\s\+file \zs\f\+\ze\s\+line \d\+'
-    else
-      let pat = '\d\+\s\+file \m' . escape(a:name, "\\") . '\M\s\+line \zs\d\+'
-    endif
-  elseif b:browserMode == s:BM_BRKLIST
+  let browserMode = s:GetBrowserMode()
+  if browserMode == s:BM_FUNCTIONS
+    let pat = '\d\+\s\+func \zs\%(<SNR>\d\+_\)\?\k\+\ze\s\+line \d\+'
+  elseif browserMode == s:BM_FUNCTION
+    let pat = '\d\+\s\+func ' . a:name . '\s\+line \zs\d\+'
+  elseif browserMode == s:BM_SCRIPTS
+    let pat = '\d\+\s\+file \zs\f\+\ze\s\+line \d\+'
+  elseif browserMode == s:BM_SCRIPT
+    let pat = '\d\+\s\+file \m' . escape(a:name, "\\") . '\M\s\+line \zs\d\+'
+  elseif browserMode == s:BM_BRKPTS
     let pat = s:BRKPT_NR
   endif
   let loc = ''
@@ -561,21 +705,18 @@ function! s:MarkBreakPoints(name)
       let loc = matchstr(brkPts, pat, curIdx)
       if loc != ''
         let line = 0
-        if (b:browserMode == s:BM_FUNCTION && search('^'. loc . '\>'))
+        if (browserMode == s:BM_FUNCTION || browserMode == s:BM_FUNCTIONS) &&
+              \ search('^'. loc . '\>')
           let line = line('.')
-        elseif b:browserMode == s:BM_SCRIPT
-          if a:name == '' && search('\m'.escape(loc, "\\"))
-            let line = line('.')
-          elseif a:name != ''
-            let line = loc + 1
-          endif
-        elseif b:browserMode == s:BM_BRKLIST
-          if search('^\s*'.loc)
-            let line = line('.')
-          endif
+        elseif browserMode == s:BM_SCRIPTS && search('\V'.escape(loc, "\\"))
+          let line = line('.')
+        elseif browserMode == s:BM_SCRIPT
+          let line = loc + 1
+        elseif browserMode == s:BM_BRKPTS && search('^\s*'.loc)
+          let line = line('.')
         endif
         if line != 0
-          if !MvContainsElement(b:brkPtLines, ',', line)
+          if !MvContainsElement(b:brkPtLines, ',', line) && has("signs")
             exec 'sign place ' . line . ' line=' . line .
                   \ ' name=VimBreakPt buffer=' . bufnr('%')
           endif
@@ -598,7 +739,7 @@ endfunction
 
 function! s:MarkCurLineInCntxt()
   silent! syn clear BreakPtsContext
-  if s:curLineInCntxt != '' && s:GetCurrentName() == s:curNameInCntxt
+  if s:curLineInCntxt != '' && s:GetListingName() == s:curNameInCntxt
     exec 'syn match BreakPtsContext "\%'.s:curLineInCntxt.'l.*"'
   endif
 endfunction
@@ -613,17 +754,17 @@ endfunction " }}}
 
 " Add/Remove breakpoints {{{
 " Add breakpoint at the current line.
-function! s:AddBreakPoint(name, brkLine)
+function! s:AddBreakPoint(name, mode, browserMode, brkLine)
   let v:errmsg = ""
   let lnum = a:brkLine
-  if b:browserMode == s:BM_FUNCTION
+  let browserMode = a:browserMode
+  let mode = a:mode
+  if browserMode == s:BM_FUNCTION
     let name = a:name
-    let mode = 'func'
-  elseif b:browserMode == s:BM_SCRIPT
+  elseif browserMode == s:BM_SCRIPT
     let name = substitute(a:name, "\\\\", '/', 'g')
-    let mode = 'file'
-  elseif b:browserMode == s:BM_BRKLIST
-    exec s:GetBrklistLineParser(getline('.'))
+  elseif browserMode == s:BM_BRKPTS
+    exec s:GetBrklistLineParser(getline('.'), 'name', 'mode')
   endif
   if lnum == 0
     call s:ExecCmd('breakadd ' . mode . ' ' . name)
@@ -636,7 +777,7 @@ function! s:AddBreakPoint(name, brkLine)
     return
   endif
   echo s:GetMessage("Break point set for: ", name, lnum)
-  if b:browserMode == s:BM_BRKLIST
+  if browserMode == s:BM_BRKPTS
     " We need to update the current line for the new id.
     " Get the breaklist output, the last line would be for the latest
     "   breakadd.
@@ -646,7 +787,7 @@ function! s:AddBreakPoint(name, brkLine)
           \ substitute(getline('.'), '^\(\s*\)\d\+', '\1'.brkLine, ''))
     setl nomodifiable
   endif
-  if !MvContainsElement(b:brkPtLines, ',', line('.'))
+  if !MvContainsElement(b:brkPtLines, ',', line('.')) && has("signs")
     exec 'sign place ' . line('.') . ' line=' . line('.') .
           \ ' name=VimBreakPt buffer=' . winbufnr(0)
   endif
@@ -658,17 +799,19 @@ function! s:GetMessage(msg, name, brkLine)
 endfunction
 
 " Remove breakpoint at the current line.
-function! s:RemoveBreakPoint(name, brkLine)
+function! s:RemoveBreakPoint(name, mode, browserMode, brkLine)
   let v:errmsg = ""
   let lnum = a:brkLine
-  if b:browserMode == s:BM_FUNCTION
+  let browserMode = a:browserMode
+  let mode = a:mode
+  if browserMode == s:BM_FUNCTION
     let name = a:name
     let mode = 'func'
-  elseif b:browserMode == s:BM_SCRIPT
+  elseif browserMode == s:BM_SCRIPT
     let name = a:name
     let mode = 'file'
-  elseif b:browserMode == s:BM_BRKLIST
-    exec s:GetBrklistLineParser(getline('.'))
+  elseif browserMode == s:BM_BRKPTS
+    exec s:GetBrklistLineParser(getline('.'), 'name', 'mode')
   endif
   if lnum == 0
     call s:ExecCmd('breakdel ' . mode . ' ' . name)
@@ -684,41 +827,45 @@ function! s:RemoveBreakPoint(name, brkLine)
   echo s:GetMessage("Break point cleared for: ", name, lnum)
   let b:brkPtLines = MvRemoveElement(b:brkPtLines, ',', line('.'))
   " There could be multiple breakpoints at the same line.
-  if !MvContainsElement(b:brkPtLines, ',', line('.'))
+  if !MvContainsElement(b:brkPtLines, ',', line('.')) && has("signs")
     sign unplace
   endif
 endfunction
 
 function! s:ToggleBreakPoint()
   let brkLine = -1
-  let name = s:GetCurrentName()
-  if b:browserMode == s:BM_FUNCTION
-    if name != ""
-      if line('.') == 1 || line('.') == line('$')
-        let brkLine = 1
-      else
-        let brkLine = matchstr(getline('.'), '^\d\+')
-        if brkLine == ''
-          let brkLine = 0
-        endif
+  let browserMode = s:GetBrowserMode()
+  if browserMode == s:BM_FUNCTIONS || browserMode == s:BM_SCRIPTS
+    return
+  endif
+  if browserMode == s:BM_FUNCTION
+    let name = s:GetListingName()
+    let mode = 'func'
+    if line('.') == 1 || line('.') == line('$')
+      let brkLine = 1
+    else
+      let brkLine = matchstr(getline('.'), '^\d\+')
+      if brkLine == ''
+        let brkLine = 0
       endif
     endif
-  elseif b:browserMode == s:BM_SCRIPT
-    if name != ''
-      let brkLine = line('.')
-      if line('.') != 1
-        let brkLine = brkLine - 1
-      endif
+  elseif browserMode == s:BM_SCRIPT
+    let name = s:GetListingName()
+    let mode = 'file'
+    if line('.') == 1
+      +
     endif
-  elseif b:browserMode == s:BM_BRKLIST
+    let brkLine = line('.')
+    let brkLine = brkLine - 1
+  elseif browserMode == s:BM_BRKPTS
+    exec s:GetBrklistLineParser(getline('.'), 'name', 'mode')
     let brkLine = line('.')
   endif
-  " If current line already has sign.
   if brkLine >= 0
     if MvContainsElement(b:brkPtLines, ',', line('.'))
-      call s:RemoveBreakPoint(name, brkLine)
+      call s:RemoveBreakPoint(name, mode, browserMode, brkLine)
     else
-      call s:AddBreakPoint(name, brkLine)
+      call s:AddBreakPoint(name, mode, browserMode, brkLine)
     endif
   endif
 endfunction
@@ -731,7 +878,7 @@ function! s:ClearSigns()
     while MvIterHasNext('ClearSigns')
       let nextBrkLine = MvIterNext('ClearSigns')
       "exec 'sign unplace ' . nextBrkLine . ' buffer=' . bufnr('%')
-      if !MvContainsElement(linesCleared, ',', nextBrkLine)
+      if !MvContainsElement(linesCleared, ',', nextBrkLine) && has("signs")
         exec nextBrkLine
         " FIXME: Weird, I am getting E159 here. This used to work fine.
         "sign unplace
@@ -756,6 +903,7 @@ function! s:SaveBrkPts(varName)
           \     ']\+\)\s\+line\s\+\(\d\+\)\%('."\n".'\|$\)\@=',
           \ '\=":breakadd ".submatch(1)." ".submatch(3)." ".'.
           \     'substitute(submatch(2), "\\\\", "/", "g")', 'g')
+    let varName = substitute(a:varName, '^g:', '', '')
     exec 'let g:'.a:varName.' = brkList'
     call confirm("The breakpoints have been saved into global variable: " .
           \ a:varName, "&OK", 1, "Info")
@@ -779,10 +927,10 @@ function! s:ClearAllBrkPts()
   endif
 endfunction
 
-function! s:GetBrklistLineParser(line)
+function! s:GetBrklistLineParser(line, nameVar, modeVar)
   return substitute(a:line,
-        \ '^\s*\d\+\s\+\(\S\+\)\s\+\(.\{-}\)\s\+line\s\+\(\d\+\)$',
-        \ "let mode='\\1' | let name='\\2' | let lnum=\\3", '')
+        \ '^\s*\d\+\s\+\(\S\+\)\s\+\(.\{-}\)\s\+line\s\+\(\d\+\)$', "let ".
+        \ a:modeVar."='\\1' | let ".a:nameVar."='\\2' | let lnum=\\3", '')
 endfunction
 " Add/Remove breakpoints }}}
 
@@ -792,29 +940,38 @@ endfunction
 " Utilities {{{
 
 " {{{
+" Get the function/script name that is currently being listed. 
 " As it appears in the :breaklist command.
-function! s:GetCurrentName()
-  if b:browserMode == s:BM_FUNCTION
-    return s:GetCurrentFuncName()
-  elseif b:browserMode == s:BM_SCRIPT
-    return s:GetCurrentScript()
+function! s:GetListingName()
+  let browserMode = s:GetBrowserMode()
+  if browserMode == s:BM_FUNCTION
+    return s:GetListedFunction()
+  elseif browserMode == s:BM_SCRIPT
+    return s:GetListedScript()
+  else
+    return ''
   endif
 endfunction
 
-function! s:GetCurrentId()
-  if b:browserMode == s:BM_FUNCTION
-    return s:ExtractSID(s:GetCurrentFuncName())
-  elseif b:browserMode == s:BM_SCRIPT
-    return s:GetCurrentScriptId()
+" Get the function/script id that is currently being listed. 
+" As it appears in the :breaklist command.
+function! s:GetListingId()
+  let browserMode = s:GetBrowserMode()
+  if browserMode == s:BM_FUNCTION
+    return s:ExtractSID(s:GetListedFunction())
+  elseif browserMode == s:BM_SCRIPT
+    return s:GetListedScriptId()
+  else
+    return ''
   endif
 endfunction
 
-function! s:GetCurrentScript()
-  return matchstr(getline(1), '^\f\+\ze (Id: \d\+)')
+function! s:GetListedScript()
+  return matchstr(getline(1), '^Script: \zs\f\+\ze (Id: \d\+)')
 endfunction
 
-function! s:GetCurrentScriptId()
-  return matchstr(getline(1), '^\f\+ (Id: \zs\d\+\ze)')
+function! s:GetListedScriptId()
+  return matchstr(getline(1), '^Script: \f\+ (Id: \zs\d\+\ze)')
 endfunction
 
 function! s:GetScript()
@@ -826,7 +983,7 @@ function! s:GetScriptId()
 endfunction
 
 function! s:GetFuncName()
-  let funcName = expand('<cword>') " Any word can be a function.
+  let funcName = expand('<cword>') " Treat any word as a possible function name.
   " Any non-alpha except <>_: which are allowed in the function name.
   if match(funcName, "[~`!@#$%^&*()-+={}[\\]|\\;'\",.?/]") != -1
     let funcName = ''
@@ -834,7 +991,7 @@ function! s:GetFuncName()
   return funcName
 endfunction
 
-function! s:GetCurrentFuncName() " Includes SID.
+function! s:GetListedFunction() " Includes SID.
   return matchstr(getline(1),
         \ '\%(^\s*function!\? \)\@<=\%(<SNR>\d\+_\)\?\k\+\%(([^)]*)\)\@=')
 endfunction
@@ -869,15 +1026,15 @@ function! s:SearchForSID(funcName) " {{{
   return ''
 endfunction " }}}
 
-function! s:OpenListingWindow(browserMode, always) " {{{
-  if s:opMode == 'WinManager' || a:always
+function! s:OpenListingWindow(always) " {{{
+  if s:opMode ==# 'WinManager' || a:always
     if s:funcBufNum == -1
       " Temporarily modify isfname to avoid treating the name as a pattern.
       let _isf = &isfname
       try
         set isfname-=\
         set isfname-=[
-        if s:opMode == 'WinManager'
+        if s:opMode ==# 'WinManager'
           if exists('+shellslash')
             call WinManagerFileEdit("\\\\".s:BreakListing_title, 1)
           else
@@ -891,7 +1048,7 @@ function! s:OpenListingWindow(browserMode, always) " {{{
       endtry
       let s:funcBufNum = bufnr('%') + 0
     else
-      if s:opMode == 'WinManager'
+      if s:opMode ==# 'WinManager'
         call WinManagerFileEdit(s:funcBufNum, 1)
       else
         let win = bufwinnr(s:funcBufNum)
@@ -902,48 +1059,45 @@ function! s:OpenListingWindow(browserMode, always) " {{{
         endif
       endif
     endif
-    if exists("b:browserMode") && b:browserMode != a:browserMode
-      call OptClearBuffer()
-    endif
-    let b:browserMode = a:browserMode
     call s:SetupBuf(0)
   endif
 endfunction " }}}
 
 function! s:ReloadCurrentScript() " {{{
-  if b:browserMode == s:BM_SCRIPT
-    let curScript = s:GetCurrentScript()
+  let browserMode = s:GetBrowserMode()
+  let curScript = ''
+  if browserMode == s:BM_SCRIPTS
+    let curScript = s:GetScript()
+    let needsRefresh = 0
+  elseif browserMode == s:BM_SCRIPT
+    let curScript = s:GetListedScript()
     let needsRefresh = 1
-    if curScript == ''
-      let curScript = s:GetScript()
-      let needsRefresh = 0
+  endif
+  if curScript != ''
+    let plugName = substitute(fnamemodify(curScript, ':t:r'), '\W', '_', 'g')
+    let varName = s:GetPlugVarIfExists(curScript)
+    if varName == ''
+      let choice = confirm("Couldn't identify the global variable that ".
+            \ "indicates that this plugin has already been loaded.\nDo you " .
+            \ "want to continue anyway?", "&Yes\n&No", 1, "Question")
+      if choice == 2
+        return
+      endif
+    else
+      call s:ExecCmd('unlet ' . varName)
     endif
-    if curScript != ''
-      let plugName = substitute(fnamemodify(curScript, ':t:r'), '\W', '_', 'g')
-      let varName = s:GetPlugVarIfExists(curScript)
-      if varName == ''
-        let choice = confirm("Couldn't identify the global variable that ".
-              \ "indicates that this plugin has already been loaded.\nDo you " .
-              \ "want to continue anyway?", "&Yes\n&No", 1, "Question")
-        if choice == 2
-          return
-        endif
-      else
-        call s:ExecCmd('unlet ' . varName)
-      endif
 
-      let v:errmsg = ''
-      call s:ExecCmd('source ' . curScript)
-      if v:errmsg == ''
-        call confirm("The script: \"" . curScript .
-              \ "\" has been successfully reloaded.", "&OK", 1, "Info")
-        if needsRefresh
-          call s:BrowserRefresh(0)
-        endif
-      else
-        call confirm("There were errors reloading script: \"" . curScript .
-              \ "\".\n" . v:errmsg, "&OK", 1, "Error")
+    let v:errmsg = ''
+    call s:ExecCmd('source ' . curScript)
+    if v:errmsg == ''
+      call confirm("The script: \"" . curScript .
+            \ "\" has been successfully reloaded.", "&OK", 1, "Info")
+      if needsRefresh
+        call s:BrowserRefresh(0)
       endif
+    else
+      call confirm("There were errors reloading script: \"" . curScript .
+            \ "\".\n" . v:errmsg, "&OK", 1, "Error")
     endif
   endif
 endfunction " }}}
@@ -951,11 +1105,11 @@ endfunction " }}}
 function! s:GetPlugVarIfExists(curScript) " {{{
   let plugName = fnamemodify(a:curScript, ':t:r')
   let varName = 'g:loaded_' . plugName
-  if ! exists(varName)
+  if ! s:EvalExpr("exists('".varName."')")
     let varName = 'g:loaded_' . substitute(plugName, '\W', '_', 'g')
-    if ! exists(varName)
+    if ! s:EvalExpr("exists('".varName."')")
       let varName = 'g:loaded_' . substitute(plugName, '\u', '\L&', 'g')
-      if ! exists(varName)
+      if ! s:EvalExpr("exists('".varName."')")
         return ''
       endif
     endif
@@ -966,32 +1120,37 @@ endfunction " }}}
 " functions SetupBuf/Quit {{{
 function! s:SetupBuf(full)
   call SetupScratchBuffer()
-  setlocal noreadonly
   setlocal nowrap
   setlocal bufhidden=hide
   setlocal isk+=< isk+=> isk+=: isk+=_
-  setlocal nonumber
-  setlocal foldcolumn=0
   set ft=vim
   " Don't make the <SNR> part look like an error.
   if hlID("vimFunctionError") != 0
     syn clear vimFunctionError
+    syn clear vimCommentString
   endif
-  syn match   vimFunction       "\<fu\%[nction]!\=\s\+\U.\{-}("me=e-1   contains=@vimFuncList nextgroup=vimFuncBody
+  syn match vimFunction "\<fu\%[nction]!\=\s\+\U.\{-}("me=e-1 contains=@vimFuncList nextgroup=vimFuncBody
+  syn match vimFunction "^\k\+$"
+  syn region vimCommentString contained oneline start='\%(^\d\+\s*\)\@<!\S\s\+"'ms=s+1 end='"'
+  syn match vimLineComment +^\d\+\s*[ \t:]*".*$+ contains=@vimCommentGroup,vimCommentString,vimCommentTitle
+  syn match BreakPtsHeader "^\%1l\%(Script:\|Scripts:\|Functions:\|Breakpoints:\).*"
+  syn match BreakPtsScriptLine "^\s*\d\+: \f\+$" contains=BreakPtsScriptId
+  syn match BreakPtsScriptId "^\s*\d\+" contained
+
   if a:full
     " Invert these to mean close instead of open.
     command! -buffer -nargs=? BreakPts :call <SID>BreakPtsLocal(<f-args>)
     nnoremap <buffer> <silent> <Plug>BreakPts :BreakPts<CR>
-
     nnoremap <silent> <buffer> q :BreakPts<CR>
-    exec 'command! -buffer BPScripts :call <SID>Browser("' . s:BM_SCRIPT .
-          \ '", "", "", 1)'
-    exec 'command! -buffer BPFunctions :call <SID>Browser("' . s:BM_FUNCTION .
-          \ '", "", "", 1)'
-    exec 'command! -buffer BPBrklist :call <SID>Browser("' . s:BM_BRKLIST .
-          \ '", "", "", 1)'
-    command! -buffer -nargs=? BPRemoteServ :call <SID>SetRemoteServer(<f-args>)
   endif
+
+  exec 'command! -buffer BPScripts :call <SID>Browser(0,
+        \ "' . s:BM_SCRIPTS . '", "", "")'
+  exec 'command! -buffer BPFunctions :call <SID>Browser(0,
+        \ "' . s:BM_FUNCTIONS . '", "", "")'
+  exec 'command! -buffer BPPoints :call <SID>Browser(0,
+        \ "' . s:BM_BRKPTS . '", "", "")'
+  command! -buffer -nargs=? BPRemoteServ :call <SID>SetRemoteServer(<f-args>)
 
   command! -buffer BPBack :call <SID>NavigateBack()
   command! -buffer BPForward :call <SID>NavigateForward()
@@ -1002,14 +1161,13 @@ function! s:SetupBuf(full)
   command! -buffer BPNext :call <SID>NextBrkPt(1)
   command! -buffer BPPrevious :call <SID>NextBrkPt(-1)
   command! -buffer BPReload :call <SID>ReloadCurrentScript()
-  command! -buffer BPClearAll :call <SID>ClearAllBrkPts()
-  command! -buffer -nargs=1 BPSave :call <SID>SaveBrkPts(<f-args>)
+  command! -buffer BPClearAll :BreakPtsClearAll
+  command! -buffer -nargs=1 BPSave :BreakPtsSave <args>
   exec "command! -buffer -nargs=1 -complete=function BPListFunc " .
-        \ ":call <SID>Browser('".s:BM_FUNCTION."', '', ".
-        \ "substitute(<f-args>, '()\?', '', ''), 0)"
-  exec "command! -buffer -nargs=1 -complete=function BPListScript " .
-        \ ":call <SID>Browser('".s:BM_SCRIPT."', 0, ".
-        \ "fnamemodify(<f-args>, ':p'), 0)"
+        \ ":call <SID>OpenListing(0, '".s:BM_FUNCTION."', '', " .
+        \ "substitute(<f-args>, '()\\=', '', ''))"
+  exec "command! -buffer -nargs=1 -complete=file BPListScript " .
+        \ ":call <SID>OpenScript(<f-args>)"
   nnoremap <silent> <buffer> <BS> :BPBack<CR>
   nnoremap <silent> <buffer> <Tab> :BPForward<CR>
   nnoremap <silent> <buffer> <CR> :BPSelect<CR>
@@ -1027,17 +1185,20 @@ function! s:SetupBuf(full)
   command! -buffer BPDNext :call <SID>ExecDebugCmd('next')
   command! -buffer BPDStep :call <SID>ExecDebugCmd('step')
   command! -buffer BPDFinish :call <SID>ExecDebugCmd('finish')
-  nnoremap <silent> <buffer> <F5> :BPDCont<CR>
-  nnoremap <silent> <buffer> <S-F5> :BPDQuit<CR>
-  nnoremap <silent> <buffer> <F10> :BPDNext<CR>
-  nnoremap <silent> <buffer> <F11> :BPDStep<CR>
-  nnoremap <silent> <buffer> <S-F11> :BPDFinish<CR>
-  nnoremap <silent> <buffer> <C-S-F9> :BPClearAll<CR>
-  "nnoremap <silent> <buffer> <C-F10> :BPDRunToCursor<CR>
+
+  call s:DefMap("n", "ContKey", "<F5>", ":BPDCont<CR>")
+  call s:DefMap("n", "QuitKey", "<S-F5>", ":BPDQuit<CR>")
+  call s:DefMap("n", "NextKey", "<F12>", ":BPDNext<CR>")
+  call s:DefMap("n", "StepKey", "<F11>", ":BPDStep<CR>")
+  call s:DefMap("n", "FinishKey", "<S-F11>", ":BPDFinish<CR>")
+  call s:DefMap("n", "ClearAllKey", "<C-S-F9>", ":BPClearAll<CR>")
+  "call s:DefMap("n", "RunToCursorKey", "<C-F10>", ":BPDRunToCursor<CR>")
 
   " A bit of a setup for syntax colors.
   hi def link BreakPtsBreakLine WarningMsg
   hi def link BreakPtsContext Visual
+  hi def link BreakPtsHeader Comment
+  hi def link BreakPtsScriptId Number
 endfunction
 
 " With no arguments, behaves like quit, and with arguments, just refreshes.
@@ -1045,12 +1206,13 @@ function! s:BreakPtsLocal(...)
   if a:0 == 0
     call s:Quit()
   else
-    call s:BrowserMain(0, a:1)
+    call s:BrowserMain(a:1)
   endif
 endfunction
 
 function! s:Quit()
-  if s:opMode != 'WinManager' || bufnr('%') != s:myBufNum
+  " The second condition is for non-buffer plugin buffers.
+  if s:opMode !=# 'WinManager' || bufnr('%') != s:myBufNum
     if NumberOfWindows() == 1
       redraw | echohl WarningMsg | echo "Can't quit the last window" |
             \ echohl NONE
@@ -1059,6 +1221,15 @@ function! s:Quit()
     endif
   endif
 endfunction " }}}
+
+function! s:DefMap(mapType, mapKeyName, defaultKey, cmdStr) " {{{
+  let key = maparg('<Plug>BreakPts' . a:mapKeyName)
+  " If user hasn't specified a key, use the default key passed in.
+  if key == ""
+    let key = a:defaultKey
+  endif
+  exec a:mapType . "noremap <buffer> <silent> " . key a:cmdStr
+endfunction " DefMap " }}}
 
 " Sometimes there is huge amount white-space in the front for some reason.
 function! s:FixInitWhite() " {{{
@@ -1084,14 +1255,7 @@ function! s:SetRemoteServer(...) " {{{
       if servName == v:servername
         let servName = '.'
       endif
-      if servName != '.'
-        try
-          let s:remoteScriptId = remote_expr(servName, 'BPScriptId()')
-        catch
-          call s:ShowRemoteError(v:exception, servName)
-          return
-        endtry
-      endif
+      let s:remoteScriptId = s:EvalExpr('BPScriptId()')
       let s:remoteServName = servName
       setl modifiable
       call OptClearBuffer()
@@ -1101,16 +1265,28 @@ function! s:SetRemoteServer(...) " {{{
   endif
 endfunction " }}}
 
-function! s:GetVimCmdOutput(cmd) " {{{
-  if s:remoteServName != '.'
+function! s:EvalExpr(expr) " {{{
+  if s:remoteServName !=# '.'
     try
-      return remote_expr(s:remoteServName, "GetVimCmdOutput('".a:cmd."')")
+      return remote_expr(s:remoteServName, a:expr)
     catch
+      let v:errmsg = substitute(v:exception, '^[^:]\+:', '', '')
       call s:ShowRemoteError(v:exception, s:remoteServName)
+      return ''
     endtry
   else
-    return GetVimCmdOutput(a:cmd)
+    let result = ''
+    try
+      exec 'let result =' a:expr
+    catch
+      " Ignore
+    endtry
+    return result
   endif
+endfunction " }}}
+
+function! s:GetVimCmdOutput(cmd) " {{{
+  return s:EvalExpr('GetVimCmdOutput('.QuoteStr(a:cmd).')')
 endfunction " }}}
 
 function! s:ShowRemoteError(msg, servName) " {{{
@@ -1120,50 +1296,58 @@ function! s:ShowRemoteError(msg, servName) " {{{
 endfunction " }}}
 
 function! s:ExecCmd(cmd) " {{{
-  if s:remoteServName != '.'
+  if s:remoteServName !=# '.'
     try
       call remote_expr(s:remoteServName, "GetVimCmdOutput('".a:cmd."')")
     catch
       let v:errmsg = substitute(v:exception, '^[^:]\+:', '', '')
-      return 0
+      call s:ShowRemoteError(v:exception, s:remoteServName)
+      return 1
     endtry
   else
     silent! exec a:cmd
   endif
-  return 1
+  return 0
 endfunction " }}}
 
 function! s:ExecDebugCmd(cmd) " {{{
   try
-    if s:remoteServName != '.' && remote_expr(s:remoteServName, 'mode()') == 'c'
+    if s:remoteServName !=# '.' &&
+          \ remote_expr(s:remoteServName, 'mode()') ==# 'c'
       call remote_send(s:remoteServName, "\<C-U>".a:cmd."\<CR>")
       call s:WaitForDbgPrompt()
-      if remote_expr(s:remoteServName, 'mode()') == 'c'
+      if remote_expr(s:remoteServName, 'mode()') ==# 'c'
         call s:ShowRemoteContext()
       endif
     endif
   catch
+    let v:errmsg = substitute(v:exception, '^[^:]\+:', '', '')
     call s:ShowRemoteError(v:exception, s:remoteServName)
   endtry
 endfunction " }}}
 
 function! s:WaitForDbgPrompt() " Throws remote exceptions. {{{
   sleep 100m " Minimum time.
-  if remote_expr(s:remoteServName, 'mode()') == 'c'
-    return 1
-  else
-    try
-      while 1
-        sleep 1
-        if remote_expr(s:remoteServName, 'mode()') == 'c'
-          break
-        endif
-      endwhile
+  try
+    if remote_expr(s:remoteServName, 'mode()') ==# 'c'
       return 1
-    catch /^Vim:Interrupt$/
-    endtry
-  endif
-  return 0
+    else
+      try
+        while 1
+          sleep 1
+          if remote_expr(s:remoteServName, 'mode()') ==# 'c'
+            break
+          endif
+        endwhile
+        return 1
+      catch /^Vim:Interrupt$/
+      endtry
+    endif
+    return 0
+  catch
+    let v:errmsg = substitute(v:exception, '^[^:]\+:', '', '')
+    call s:ShowRemoteError(v:exception, s:remoteServName)
+  endtry
 endfunction " }}}
 
 function! s:ShowRemoteContext() " {{{
@@ -1172,7 +1356,7 @@ function! s:ShowRemoteContext() " {{{
     let mode = s:BM_FUNCTION
     " FIXME: Get the function stack and make better use of it.
     exec substitute(context,
-          \ '^function \%('.s:FUNC_NAME.'\.\.\)*\('.s:FUNC_NAME.
+          \ '^function \%('.s:FUNC_NAME_PAT.'\.\.\)*\('.s:FUNC_NAME_PAT.
           \ '\), line \(\d\+\)$',
           \ 'let name = "\1" | let lineNo = "\2"', '')
     if name == ''
@@ -1182,8 +1366,8 @@ function! s:ShowRemoteContext() " {{{
       let mode = s:BM_SCRIPT
     endif
     if name != ''
-      if name != s:GetCurrentName()
-        call s:Browser(mode, '', name, 0)
+      if name != s:GetListingName()
+        call s:Browser(0, mode, '', name)
       endif
       let s:curNameInCntxt = name
       let s:curLineInCntxt = lineNo + 1 " 1 extra for function header.
@@ -1203,21 +1387,26 @@ endfunction " }}}
 
 function! s:GetRemoteContext() " {{{
   try
-    if s:remoteServName != '.' && remote_expr(s:remoteServName, 'mode()') == 'c'
+    if s:remoteServName !=# '.' &&
+          \ remote_expr(s:remoteServName, 'mode()') ==# 'c'
       " FIXME: Assume C-U is not mapped.
       call remote_send(s:remoteServName, "\<C-U>exec ".
             \ s:remoteScriptId."GenContext()\<CR>")
       sleep 100m " FIXME: Otherwise the var is not getting updated.
+      " WHY: if the remote vim crashes in this call, no exception seems to get
+      "   generated.
       return remote_expr(s:remoteServName, 'g:BPCurContext')
     endif
   catch
+    let v:errmsg = substitute(v:exception, '^[^:]\+:', '', '')
     call s:ShowRemoteError(v:exception, s:remoteServName)
   endtry
   return ''
 endfunction " }}}
 
 function! s:Open() " {{{
-  if b:browserMode == s:BM_SCRIPT
+  let browserMode = s:GetBrowserMode()
+  if browserMode == s:BM_SCRIPTS
     let curScript = s:GetScript()
     let bufNr = bufnr(curScript)
     let winNr = bufwinnr(bufNr)
@@ -1242,11 +1431,16 @@ endfunction " }}}
 
 " BPBreak {{{
 let s:breakIf = ''
-function! BPBreak(offset)
+function! s:BPBreak(offset, clear)
   if s:breakIf == ''
     let s:breakIf = ExtractFuncListing(s:myScriptId.'_BreakIf', 0, 0)
   endif
-  return substitute(s:breakIf, '<offset>', a:offset, '')
+  return substitute(substitute(s:breakIf, '<offset>', a:offset, 'g'),
+        \ '<clear>', a:clear, 'g')
+endfunction
+
+function! BPBreak(offset)
+  return s:BPBreak(a:offset, 1)
 endfunction
 
 function! BPBreakIf(cond, offset)
@@ -1261,19 +1455,39 @@ function! BPScriptId()
   return s:myScriptId
 endfunction
 
+function! BPDeBreak(offset)
+  return s:BPBreak(a:offset, 0)
+endfunction
+
+function! BPDeBreakIf(cond, offset)
+  if a:cond
+    return BPDeBreak(a:offset)
+  else
+    return ''
+  endif
+endfunction
+
 function! s:_BreakIf()
   try
     throw ''
   catch
     let __breakLine = v:throwpoint
   endtry
-  let __breakLine = substitute(__breakLine,
-        \ '^function \%(\%(\k\|[<>]\)\+\.\.\)*\(\%(\k\|[<>]\)\+\), ' .
-        \     'line\s\+\(\d\+\)$',
-        \ '\=submatch(2) + <offset> . " " . submatch(1)', '')
+  if __breakLine =~# '^function '
+    let __breakLine = substitute(__breakLine,
+          \ '^function \%(\%(\k\|[<>]\)\+\.\.\)*\(\%(\k\|[<>]\)\+\), ' .
+          \     'line\s\+\(\d\+\)$',
+          \ '\="func " . (submatch(2) + <offset>) . " " . submatch(1)', '')
+  else
+    let __breakLine = substitute(__breakLine,
+          \ '^\(.\{-}\), line\s\+\(\d\+\)$',
+          \ '\="file " . (submatch(2) + <offset>) . " " . submatch(1)', '')
+  endif
   if __breakLine != ''
-    silent! exec "breakdel func " . __breakLine
-    exec "breakadd func " . __breakLine
+    silent! exec "breakdel " . __breakLine
+    if <clear>
+      exec "breakadd " . __breakLine
+    endif
   endif
   unlet __breakLine
 endfunction
@@ -1298,6 +1512,37 @@ function! s:_GenContext()
   endtry
 endfunction
 " Context }}}
+
+function! s:RuntimeComplete(ArgLead, CmdLine, CursorPos)
+  return s:RuntimeCompleteImpl(a:ArgLead, a:CmdLine, a:CursorPos, 1)
+endfunction
+
+function! s:RuntimeCompleteImpl(ArgLead, CmdLine, CursorPos, smartSlash)
+  return UserFileComplete(a:ArgLead, a:CmdLine, a:CursorPos, a:smartSlash, &rtp)
+endfunction
+
+function! s:BreakAddComplete(ArgLead, CmdLine, CursorPos)
+  let sub = strpart(a:CmdLine, 0, a:CursorPos)
+  let cmdPrefixPat = '^\s*Breaka\%[dd]\s\+'
+  if sub =~# cmdPrefixPat.'func\s\+'
+    return substitute(GetVimCmdOutput('function'), '^\n\|function \([^(]\+\)([^)]*)'
+          \ , '\1', 'g')
+  elseif sub =~# cmdPrefixPat.'file\s\+'
+    return s:RuntimeCompleteImpl(a:ArgLead, a:CmdLine, a:CursorPos, 0)
+  else
+    return "func\nfile\n"
+  endif
+endfunction
+
+function! s:BreakDelComplete(ArgLead, CmdLine, CursorPos)
+  let brkPts = substitute(GetVimCmdOutput('breaklist'), '^\n', '', '')
+  if brkPts !~ 'No breakpoints defined'
+    return substitute(brkPts, '\s*\d\+\s\+\(func\|file\)\([^'."\n".
+          \ ']\{-}\)\s\+line\s\+\(\d\+\)', '\1 \3 \2', 'g')
+  else
+    return ''
+  endif
+endfunction
 " Utilities }}}
 
 
@@ -1306,7 +1551,7 @@ function! s:NavigateBack()
   call s:Navigate('u')
   if getline(1) == ''
     call s:NavigateForward()
-    call s:MarkBreakPoints(s:GetCurrentName())
+    call s:MarkBreakPoints(s:GetListingName())
   endif
 endfunction
 
@@ -1325,7 +1570,7 @@ function! s:Navigate(key)
   silent! exec "normal" a:key
 
   let &l:modifiable = _modifiable
-  call s:MarkBreakPoints(s:GetCurrentName())
+  call s:MarkBreakPoints(s:GetListingName())
 
   if line("'t") > 0 && line("'t") <= line('$')
     normal! `t
