@@ -4,11 +4,14 @@
 " Created: 09-Jan-2003
 " Requires: Vim-6.3, genutils.vim(1.13), multvals.vim(3.6)
 " Depends On: foldutil.vim(1.4), cmdalias.vim(1.0)
-" Version: 3.1.6
+" Version: 3.2.1
 " Acknowledgements:
-"   - Thanks a lot to David Fishburn {fishburn at sybase dot com} for
-"     providing a lot of feedback and ideas, and helping me with finding
-"     problems. The plugin is much more usable and bug free because of him.
+"   - Thanks a lot to David Fishburn (fishburn at sybase dot com) for
+"     providing a lot of feedback, ideas and patches, and helping me with
+"     finding problems. The plugin is much more usable and bug free because of
+"     him.
+"   - Bram and Michael Geddes (mgeddes at au dot mediacommand dot com) for
+"     fixing the Vim crashes with remote debugging.
 " Licence: This program is free software; you can redistribute it and/or
 "          modify it under the terms of the GNU General Public License.
 "          See http://www.gnu.org/copyleft/gpl.txt 
@@ -230,6 +233,9 @@
 "       the script local values. This allows us to show the local variables at
 "       any time, and without needing to execute them at debug prompt remotely.
 "
+"   - BPListFunc and BPListScript use default Vim completion, but they should
+"     really use custom completion which reads the list from current remote
+"     Vim server.
 "   - How do I detect if the execution of the command has finished, so that I
 "     can terminate s:WaitForDbgPrompt()?
 "   - If you set a breakpoint during the startup, it doesn't work. Also,
@@ -983,9 +989,9 @@ function! s:GetScriptId()
 endfunction
 
 function! s:GetFuncName()
-  let funcName = expand('<cword>') " Treat any word as a possible function name.
-  " Any non-alpha except <>_: which are allowed in the function name.
-  if match(funcName, "[~`!@#$%^&*()-+={}[\\]|\\;'\",.?/]") != -1
+  let funcName = expand('<cWORD>') " Treat any word as a possible function name.
+  " Any non-alpha except <>_: which are not allowed in the function name.
+  if match(funcName, "[~`!@$%^&*()-+={}[\\]|\\;'\",.?/]") != -1
     let funcName = ''
   endif
   return funcName
@@ -993,7 +999,7 @@ endfunction
 
 function! s:GetListedFunction() " Includes SID.
   return matchstr(getline(1),
-        \ '\%(^\s*function!\? \)\@<=\%(<SNR>\d\+_\)\?\k\+\%(([^)]*)\)\@=')
+        \ '\%(^\s*function!\? \)\@<=\%(<SNR>\d\+_\)\?\f\+\%(([^)]*)\)\@=')
 endfunction
 
 function! s:ExtractSID(funcName)
@@ -1036,12 +1042,16 @@ function! s:OpenListingWindow(always) " {{{
         set isfname-=[
         if s:opMode ==# 'WinManager'
           if exists('+shellslash')
-            call WinManagerFileEdit("\\\\".s:BreakListing_title, 1)
+            call WinManagerFileEdit("\\\\".escape(s:BreakListing_title, ' '), 1)
           else
-            call WinManagerFileEdit("\\".s:BreakListing_title, 1)
+            call WinManagerFileEdit("\\".escape(s:BreakListing_title, ' '), 1)
           endif
         else
-          exec "sp \\\\". s:BreakListing_title
+          if exists('+shellslash')
+            exec "sp \\\\". escape(s:BreakListing_title, ' ')
+          else
+            exec "sp \\". escape(s:BreakListing_title, ' ')
+          endif
         endif
       finally
         let &isfname = _isf
